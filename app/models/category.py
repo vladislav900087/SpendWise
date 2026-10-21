@@ -18,7 +18,7 @@ class Category(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     type: Mapped[CategoryType] = mapped_column(
         SQLEnum(CategoryType, native_enum=False, values_callable=lambda x: [e.value for e in x]),
