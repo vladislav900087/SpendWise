@@ -12,3 +12,6 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    categories: Mapped[list['Category']] = relationship(back_populates='user', cascade='all, delete-orphan')
+    transactions: Mapped[list['Transaction']] = relationship(back_populates='user', cascade='all, delete-orphan')

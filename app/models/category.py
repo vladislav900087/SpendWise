@@ -25,3 +25,6 @@ class Category(Base):
         nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    user: Mapped['User'] = relationship(back_populates='categories')
+    transactions: Mapped[list['Transaction']] = relationship(back_populates='category')
