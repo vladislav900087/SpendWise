@@ -7,6 +7,9 @@ from app.repositories.users import UsersRepository
 from app.services.auth import AuthService, oauth2_scheme
 from app.models.user import User
 
+from app.repositories.categories import CategoryRepository
+from app.services.categories import CategoryService
+
 def get_db() -> Session:
     db = SessionLocal()
 
@@ -27,6 +30,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), service: AuthService =
 
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
+
+def get_category_repository(db: Session = Depends(get_db)) -> CategoryRepository:
+    return CategoryRepository(db=db)
+
+def get_category_service(users_repository: UsersRepository = Depends(get_users_repository), category_repository: CategoryRepository = Depends(get_category_repository)) -> CategoryService:
+    return CategoryService(users_repository=users_repository, category_repository=category_repository)
 
 
 

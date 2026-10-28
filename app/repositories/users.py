@@ -38,3 +38,4 @@ class UsersRepository:
     def delete(self, user: User) -> None:
 
         self.db.delete(user)
+        self.db.commit()
