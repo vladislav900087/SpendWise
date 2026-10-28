@@ -6,7 +6,7 @@ from app.core.config import settings
 from fastapi.security import OAuth2PasswordBearer
 
 SECRET_KEY = settings.secret_key
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl='login')
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/api/v1/auth/login')
 
 
 import jwt
@@ -22,7 +22,7 @@ class AuthService:
         if existing_user is not None:
             raise ValueError('User already exists.')
 
-        user = User(email=email, password=hash_password(password))
+        user = User(email=email, hashed_password=hash_password(password))
 
         return self.repository.create(user)
 
