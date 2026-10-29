@@ -503,6 +503,409 @@ def test_user_cannot_list_another_users_categories(client):
     assert len(user_ids) == 2
     assert user_ids[0] != user_ids[1]
 
+def test_api_gets_category_by_id(client):
+
+    register_response = client.post('/api/v1/auth/register', json={"email": 'test_user@example.com', 'password': 'password123'})
+
+    assert register_response.status_code == 201
+
+    login_response = client.post('/api/v1/auth/login', data={"username": 'test_user@example.com', 'password': 'password123'})
+
+    assert login_response.status_code == 200
+
+    token = login_response.json()['access_token']
+
+    create_response = client.post('/api/v1/categories', headers={'Authorization': f'Bearer {token}'}, json={'name': 'Salary', 'type': CategoryType.INCOME})
+
+    assert create_response.status_code == 201
+    category_id = create_response.json()['id']
+
+    get_response = client.get(f'/api/v1/categories/{category_id}', headers={"Authorization": f'Bearer {token}'})
+
+    assert get_response.status_code == 200
+    assert get_response.json()['name'] == 'Salary'
+    assert get_response.json()['type'] == CategoryType.INCOME
+
+def test_user_cannot_get_another_users_category_by_id(client):
+
+    emails = ['first_user@example.com', 'second_user@example.com']
+
+    for email in emails:
+        response = client.post('/api/v1/auth/register', json={'email': email, 'password': 'password123'})
+        assert response.status_code == 201
+
+    tokens = []
+
+    for email in emails:
+        response = client.post('/api/v1/auth/login', data={"username": email, 'password': 'password123'})
+        assert response.status_code == 200
+        token = response.json()['access_token']
+        tokens.append(token)
+
+    category_ids = []
+
+    for token in tokens:
+        response = client.post('/api/v1/categories', headers={'Authorization': f'Bearer {token}'}, json={'name': 'Food', 'type': CategoryType.EXPENSE})
+        assert response.status_code == 201
+        category_id = response.json()['id']
+        user_id = response.json()['user_id']
+        category_ids.append({'user_id': user_id, 'category_id': category_id})
+
+    get_first_user_id_response = client.get('/api/v1/auth/me', headers={"Authorization": f'Bearer {tokens[0]}'})
+
+    assert get_first_user_id_response.status_code == 200
+    first_user_id = get_first_user_id_response.json()['id']
+
+    assert category_ids[0]['user_id'] == first_user_id
+
+    get_second_user_id_response = client.get('/api/v1/auth/me', headers={"Authorization": f'Bearer {tokens[1]}'})
+
+    assert get_second_user_id_response.status_code == 200
+    second_user_id = get_second_user_id_response.json()['id']
+
+    assert category_ids[1]['user_id'] == second_user_id
+
+    get_first_user_category_response = client.get(f'/api/v1/categories/{category_ids[0]['category_id']}', headers={"Authorization": f'Bearer {tokens[0]}'})
+    assert get_first_user_category_response.status_code == 200
+    category_id = get_first_user_category_response.json()['id']
+
+    assert category_ids[0]['category_id'] == category_id
+
+    get_second_user_category_response = client.get(f'/api/v1/categories/{category_ids[1]['category_id']}', headers={'Authorization': f'Bearer {tokens[1]}'})
+
+    assert get_second_user_category_response.status_code == 200
+
+    category_id = get_second_user_category_response.json()['id']
+    assert category_ids[1]['category_id'] == category_id
+
+    first_user_cannot_get_second_users_category_response = client.get(f'/api/v1/categories/{category_ids[1]['category_id']}', headers={'Authorization': f'Bearer {tokens[0]}'})
+
+    assert first_user_cannot_get_second_users_category_response.status_code == 404
+
+    second_user_cannot_get_first_users_category_response = client.get(f'/api/v1/categories/{category_ids[0]['category_id']}', headers={'Authorization': f'Bearer {tokens[1]}'})
+
+    assert second_user_cannot_get_first_users_category_response.status_code == 404
+
+def test_user_cannot_get_missing_category_by_id(client):
+
+    register_response = client.post('/api/v1/auth/register', json={"email": 'test_user@example.com', 'password': 'password123'})
+
+    assert register_response.status_code == 201
+
+    login_response = client.post('/api/v1/auth/login', data={"username": 'test_user@example.com', 'password': 'password123'})
+
+    assert login_response.status_code == 200
+
+    access_token = login_response.json()['access_token']
+
+def test_unauthorized_user_cannot_get_category_by_id(client):
+
+    response = client.get('/api/v1/categories/999999')
+
+    assert response.status_code == 401
+
+def test_api_updates_category_by_id(client):
+
+    register_response = client.post('/api/v1/auth/register', json={"email": 'test_user@example.com', 'password': 'password123'})
+
+    assert register_response.status_code == 201
+
+    login_response = client.post('/api/v1/auth/login', data={"username": 'test_user@example.com', 'password': 'password123'})
+
+    assert login_response.status_code == 200
+    access_token = login_response.json()['access_token']
+
+    create_response = client.post('/api/v1/categories', headers={'Authorization': f'Bearer {access_token}'}, json={'name': 'Food', 'type': CategoryType.EXPENSE})
+
+    assert create_response.status_code == 201
+
+    category_id = create_response.json()['id']
+
+    update_response = client.patch(f'/api/v1/categories/{category_id}', headers={"Authorization": f'Bearer {access_token}'}, json={'name': 'Top Up', 'type': CategoryType.INCOME})
+
+    assert update_response.status_code == 200
+    assert update_response.json()['name'] == 'Top Up'
+    assert update_response.json()['type'] == CategoryType.INCOME
+    assert update_response.json()['id'] == category_id
+
+def test_user_cannot_update_another_users_category_by_id(client):
+
+    emails = ['first_user@example.com', 'second_user@example.com']
+
+    user_data = []
+
+    for email in emails:
+        register_response = client.post('/api/v1/auth/register', json={'email': email, 'password': 'password123'})
+
+        assert register_response.status_code == 201
+
+        login_response = client.post('/api/v1/auth/login', data={'username': email, 'password': 'password123'})
+
+
+        assert login_response.status_code == 200
+
+        access_token = login_response.json()['access_token']
+
+        payload = {'email': email, 'user_id': register_response.json()['id'], 'access_token': access_token}
+
+        user_data.append(payload)
+
+    first_user_get_response = client.get('/api/v1/auth/me', headers={'Authorization': f'Bearer {user_data[0]['access_token']}'})
+
+    assert first_user_get_response.status_code == 200
+    assert first_user_get_response.json()['id'] == user_data[0]['user_id']
+    assert first_user_get_response.json()['email'] == user_data[0]['email']
+
+    second_user_get_response = client.get('/api/v1/auth/me', headers={"Authorization": f'Bearer {user_data[1]['access_token']}'})
+
+    assert second_user_get_response.status_code == 200
+    assert second_user_get_response.json()['id'] == user_data[1]['user_id']
+    assert second_user_get_response.json()['email'] == user_data[1]['email']
+
+    for user in user_data:
+        create_response = client.post('/api/v1/categories', headers={"Authorization": f'Bearer {user['access_token']}'}, json={"name": f'{user['email']}\'s category', 'type': CategoryType.EXPENSE})
+
+        assert create_response.status_code == 201
+        category_id = create_response.json()['id']
+
+        user['category'] = {'category_id': category_id, 'category_name': create_response.json()['name']}
+
+    assert user_data[0]['category'] is not None
+
+    first_user_gets_ones_category = client.get(f'/api/v1/categories/{user_data[0]['category']['category_id']}', headers={'Authorization': f'Bearer {user_data[0]['access_token']}'})
+
+    assert first_user_gets_ones_category.status_code == 200
+    assert first_user_gets_ones_category.json()['id'] == user_data[0]['category']['category_id']
+    assert first_user_gets_ones_category.json()['name'] == user_data[0]['category']['category_name']
+
+    second_user_gets_ones_category = client.get(f'/api/v1/categories/{user_data[1]['category']['category_id']}', headers={"Authorization": f'Bearer {user_data[1]['access_token']}'})
+
+    assert second_user_gets_ones_category.status_code == 200
+
+    assert second_user_gets_ones_category.json()['id'] == user_data[1]['category']['category_id']
+    assert second_user_gets_ones_category.json()['user_id'] == user_data[1]['user_id']
+    assert second_user_gets_ones_category.json()['name'] == user_data[1]['category']['category_name']
+
+    first_user_cannot_update_second_users_category_response = client.patch(f'/api/v1/categories/{user_data[1]['category']['category_id']}', headers={"Authorization": f'Bearer {user_data[0]['access_token']}'}, json={'name': 'Now it\'s my category', 'type': CategoryType.INCOME})
+
+
+    assert first_user_cannot_update_second_users_category_response.status_code == 404
+
+    second_user_cannot_update_first_users_category_response = client.patch(f'/api/v1/categories/{user_data[0]['category']['category_id']}', headers={"Authorization": f'Bearer {user_data[1]['access_token']}'}, json={"name": 'Now it\'s my category', 'type': CategoryType.INCOME})
+
+    assert second_user_cannot_update_first_users_category_response.status_code == 404
+
+def test_user_cannot_update_missing_category_by_id(client):
+
+    register_response = client.post('/api/v1/auth/register', json={"email": 'test_user@example.com', 'password': 'password123'})
+
+    assert register_response.status_code == 201
+
+    login_response = client.post('/api/v1/auth/login', data={"username": 'test_user@example.com', 'password': 'password123'})
+
+    assert login_response.status_code == 200
+
+    access_token = login_response.json()['access_token']
+
+    update_attempt_response = client.patch('/api/v1/categories/999999', json={'name': 'Top Up', 'type': CategoryType.INCOME}, headers={'Authorization': f'Bearer {access_token}'})
+
+    assert update_attempt_response.status_code == 404
+
+def test_user_cannot_set_already_existing_category_name_and_type_while_updating_category(client):
+
+    register_response = client.post('/api/v1/auth/register', json={"email": 'test_user@example.com', 'password': 'password123'})
+
+    assert register_response.status_code == 201
+
+    login_response = client.post('/api/v1/auth/login', data={"username": 'test_user@example.com', 'password': 'password123'})
+
+    assert login_response.status_code == 200
+
+    access_token = login_response.json()['access_token']
+
+    first_create_response = client.post('/api/v1/categories', headers={'Authorization': f'Bearer {access_token}'}, json={'name': 'Top Up', 'type': CategoryType.INCOME})
+
+    assert first_create_response.status_code == 201
+
+    second_create_response = client.post('/api/v1/categories', headers={'Authorization': f'Bearer {access_token}'}, json={'name': 'Fitness', 'type': CategoryType.EXPENSE})
+
+    assert second_create_response.status_code == 201
+
+    second_category_id = second_create_response.json()['id']
+
+    update_attempt_response = client.patch(f'/api/v1/categories/{second_category_id}', headers={"Authorization": f'Bearer {access_token}'}, json={"name": 'Top Up', 'type': CategoryType.INCOME})
+
+    assert update_attempt_response.status_code == 409
+
+def test_user_cannot_update_category_that_has_transactions(client, db_session):
+
+    register_response = client.post('/api/v1/auth/register', json={'email': 'test_user@example.com', 'password': 'password123'})
+
+    assert register_response.status_code == 201
+
+    login_response = client.post('/api/v1/auth/login', data={"username": 'test_user@example.com', 'password': 'password123'})
+
+    assert login_response.status_code == 200
+    access_token = login_response.json()['access_token']
+
+    create_response = client.post('/api/v1/categories', headers={'Authorization': f'Bearer {access_token}'}, json={"name": 'Top Up', 'type': CategoryType.INCOME})
+
+    assert create_response.status_code == 201
+
+    user_id = register_response.json()['id']
+    category_id = create_response.json()['id']
+
+    transaction = Transaction(user_id=user_id, category_id=category_id, amount=10000, type=TransactionType.INCOME, transaction_date=date.today())
+
+    db_session.add(transaction)
+    db_session.commit()
+    db_session.refresh(transaction)
+
+    update_attempt_response = client.patch(f'/api/v1/categories/{category_id}', headers={'Authorization': f'Bearer {access_token}'}, json={'name': 'Groceries', 'type': CategoryType.EXPENSE})
+
+    assert update_attempt_response.status_code == 400
+
+def test_unauthenticated_user_cannot_update_category(client):
+
+    update_attempt_response = client.patch('/api/v1/categories/999999')
+
+    assert update_attempt_response.status_code == 401
+
+def test_api_deletes_category(client):
+
+    register_response = client.post('/api/v1/auth/register', json={"email": 'test_user@example.com', 'password': 'password123'})
+
+    assert register_response.status_code == 201
+
+    login_response = client.post('/api/v1/auth/login', data={"username": 'test_user@example.com', 'password': 'password123'})
+
+    assert login_response.status_code == 200
+
+    access_token = login_response.json()['access_token']
+
+    create_response = client.post('/api/v1/categories', headers={'Authorization': f'Bearer {access_token}'}, json={"name": 'Groceries', 'type': CategoryType.EXPENSE})
+
+    assert create_response.status_code == 201
+
+    category_id = create_response.json()['id']
+
+    delete_response = client.delete(f'/api/v1/categories/{category_id}', headers={'Authorization': f'Bearer {access_token}'})
+
+    assert delete_response.status_code == 204
+
+def test_user_cannot_delete_another_users_category(client):
+
+    emails = ['first_user@example.com', 'second_user@example.com']
+    user_data = []
+
+    for email in emails:
+        register_response = client.post('/api/v1/auth/register', json={"email": email, 'password': 'password123'})
+        assert register_response.status_code == 201
+
+        user_id = register_response.json()['id']
+
+
+        login_response = client.post('/api/v1/auth/login', data={"username": email, 'password': 'password123'})
+
+        assert login_response.status_code == 200
+
+        access_token = login_response.json()['access_token']
+
+        user = {'email': email, 'user_id': user_id, 'access_token': access_token}
+        user_data.append(user)
+
+    for user in user_data:
+        create_response = client.post('/api/v1/categories', headers={'Authorization': f'Bearer {user['access_token']}'}, json={"name": f'{user['email']}\'s category', 'type': CategoryType.EXPENSE})
+        assert create_response.status_code == 201
+
+        category_id = create_response.json()['id']
+
+        user['category_id'] = category_id
+
+    first_user_cannot_delete_second_users_category = client.delete(f'/api/v1/categories/{user_data[1]['category_id']}', headers={'Authorization': f'Bearer {user_data[0]['access_token']}'})
+
+    assert first_user_cannot_delete_second_users_category.status_code == 404
+
+    second_user_cannot_delete_first_users_category = client.delete(f'/api/v1/categories/{user_data[0]['category_id']}', headers={"Authorization": f'Bearer {user_data[1]['access_token']}'})
+
+    assert second_user_cannot_delete_first_users_category.status_code == 404
+
+def test_user_cannot_delete_category_that_has_transactions(client, db_session):
+
+    register_response = client.post('/api/v1/auth/register', json={"email": 'test_user@example.com', 'password': 'password123'})
+
+    assert register_response.status_code == 201
+
+    login_response = client.post('/api/v1/auth/login', data={"username": 'test_user@example.com', 'password': 'password123'})
+
+    assert login_response.status_code == 200
+
+    access_token = login_response.json()['access_token']
+
+    create_response = client.post('/api/v1/categories', headers={"Authorization": f'Bearer {access_token}'}, json={'name': 'Groceries', 'type': CategoryType.EXPENSE})
+
+    assert create_response.status_code == 201
+
+    category_id = create_response.json()['id']
+
+    transaction = Transaction(user_id=register_response.json()['id'], category_id=category_id, amount=1000, type=TransactionType.EXPENSE)
+
+    db_session.add(transaction)
+    db_session.commit()
+    db_session.refresh(transaction)
+
+    delete_attempt_response = client.delete(f'/api/v1/categories/{category_id}', headers={"Authorization": f'Bearer {access_token}'})
+
+    assert delete_attempt_response.status_code == 400
+
+def test_user_cannot_delete_missing_category(client):
+
+    register_response = client.post('/api/v1/auth/register', json={"email": 'test_user@example.com', 'password': 'password123'})
+
+    assert register_response.status_code == 201
+
+    login_response = client.post('/api/v1/auth/login', data={"username": 'test_user@example.com', 'password': 'password123'})
+
+    assert login_response.status_code == 200
+
+    access_token = login_response.json()['access_token']
+
+    delete_response = client.delete('/api/v1/categories/999999', headers={"Authorization": f'Bearer {access_token}'})
+
+    assert delete_response.status_code == 404
+
+def test_unauthenticated_user_cannot_delete_category(client):
+
+    delete_attempt_response = client.delete('/api/v1/categories/999999')
+
+    assert delete_attempt_response.status_code == 401
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

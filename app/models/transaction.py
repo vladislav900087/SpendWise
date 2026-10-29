@@ -26,7 +26,7 @@ class Transaction(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default='USD')
     type: Mapped[TransactionType] = mapped_column(SQLEnum(TransactionType, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False, default=TransactionType.INCOME.value)
-    transaction_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    transaction_date: Mapped[date] = mapped_column(Date, nullable=False, index=True, default=date.today())
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
