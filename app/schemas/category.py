@@ -14,11 +14,11 @@ class CategoryRead(BaseModel):
 
 class CategoryCreate(BaseModel):
     name: str
-    type: CategoryType
+    type: CategoryType | None = None
 
 class CategoryUpdate(BaseModel):
-    name: str
-    type: CategoryType
+    name: str | None = None
+    type: CategoryType | None = None
 
 class CategoryListByType(BaseModel):
     type: CategoryType | None

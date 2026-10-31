@@ -10,6 +10,9 @@ from app.models.user import User
 from app.repositories.categories import CategoryRepository
 from app.services.categories import CategoryService
 
+from app.repositories.transactions import TransactionRepository
+from app.services.transactions import TransactionService
+
 def get_db() -> Session:
     db = SessionLocal()
 
@@ -36,6 +39,16 @@ def get_category_repository(db: Session = Depends(get_db)) -> CategoryRepository
 
 def get_category_service(users_repository: UsersRepository = Depends(get_users_repository), category_repository: CategoryRepository = Depends(get_category_repository)) -> CategoryService:
     return CategoryService(users_repository=users_repository, category_repository=category_repository)
+
+def get_transaction_repository(db: Session = Depends(get_db)) -> TransactionRepository:
+    return TransactionRepository(db=db)
+
+def get_transaction_service(repository: TransactionRepository = Depends(get_transaction_repository), category_repository: CategoryRepository = Depends(get_category_repository), users_repository: UsersRepository = Depends(get_users_repository)) -> TransactionService:
+    return TransactionService(repository=repository, category_repository=category_repository, users_repository=users_repository)
+
+
+
+
 
 
 
