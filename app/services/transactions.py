@@ -5,6 +5,9 @@ from app.models.transaction import TransactionType, Transaction
 from app.models.category import CategoryType
 from utils.check_date_format import check_date_format
 from datetime import date, datetime, timezone
+from decimal import Decimal
+
+
 
 
 class TransactionService:
@@ -46,10 +49,11 @@ class TransactionService:
 
 
         if currency is not None:
-            if len(currency) > 3 and currency not in ('USD', 'EUR', 'RUB', 'KZT'):
-                raise ValueError('Invalid currency.')
+            if len(currency) == 3 and currency in ('USD', 'EUR', 'RUB', 'KZT'):
 
-            transaction.currency = currency
+                transaction.currency = currency
+            else:
+                raise ValueError('Invalid currency.')
         else:
             transaction.currency = 'USD'
 
@@ -130,14 +134,53 @@ class TransactionService:
 
         return self.repository.update(transaction)
 
-    def list_transactions_by_user(self, user_id: int) -> list[Transaction]:
+    def list_transactions_by_user(self, user_id: int, date_from: date | str | None = None, date_to: date | str | None = None, category_id: int | None = None, transaction_type: str | None = None, min_amount: Decimal | None = None, max_amount: Decimal | None = None, sort_by: str = 'transaction_date', sort_order: str = 'desc', limit: int = 20, offset: int = 0) -> list[Transaction]:
 
         user = self.users_repository.get_by_id(user_id)
 
         if user is None:
             raise ValueError('User not found.')
 
-        return self.repository.list_by_user(user_id)
+        if isinstance(date_from, str):
+            try:
+                date_from = date.fromisoformat(date_from)
+            except ValueError:
+                raise ValueError('Invalid date_from format. Use YYYY-MM-DD.')
+
+        if isinstance(date_to, str):
+            try:
+                date_to = date.fromisoformat(date_to)
+            except ValueError:
+                raise ValueError('Invalid date_to format. Use YYYY-MM-DD.')
+
+        if date_from and date_to and date_from > date_to:
+            raise ValueError('Invalid date range.')
+
+        if min_amount is not None and min_amount < 0:
+            raise ValueError('Minimum amount cannot be negative.')
+        if max_amount is not None and max_amount < 0:
+            raise ValueError('Maximum amount cannot be negative.')
+
+        if min_amount is not None and max_amount is not None:
+            if min_amount > max_amount:
+                raise ValueError('Invalid amount range.')
+
+        if transaction_type is not None and transaction_type not in (TransactionType.EXPENSE, TransactionType.INCOME):
+            raise ValueError('Invalid transaction type.')
+
+        if sort_by not in ('transaction_date', 'created_at', 'amount'):
+            raise ValueError('Invalid sorting field.')
+
+        if sort_order not in ('desc', 'asc'):
+            raise ValueError('Invalid sorting order.')
+
+        if category_id is not None:
+            category = self.category_repository.get_by_id(category_id)
+            if category is None or category.user_id != user.id:
+                raise ValueError('Category not found.')
+
+
+        return self.repository.list_by_user(user_id, date_from=date_from, date_to=date_to, category_id=category_id, transaction_type=transaction_type, min_amount=min_amount, max_amount=max_amount, sort_by=sort_by, sort_order=sort_order, limit=limit, offset=offset)
 
     def get_transaction_by_id(self, user_id: int, transaction_id: int) -> Transaction:
         user = self.users_repository.get_by_id(user_id)

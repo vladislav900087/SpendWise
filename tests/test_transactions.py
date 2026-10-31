@@ -9,6 +9,7 @@ from app.services.transactions import TransactionService
 import pytest
 from datetime import date, datetime, timezone
 import uuid
+from utils.check_date_format import check_date_format
 
 # useful test functions
 
@@ -42,16 +43,38 @@ def create_category(client, token: str, category_type: CategoryType | None = Non
 
     return response.json()['id']
 
-def create_transaction(client, token: str, transaction_type: TransactionType | None = None):
+def create_transaction(client, token: str, transaction_type: TransactionType | None = None, transaction_date: str | None = None, amount_index: int | None = None):
 
     category_id = create_category(client, token)
 
+    standard_index = 0
+
+
     standard_type = TransactionType.INCOME
+    standard_date = date.today().isoformat()
+
     if transaction_type is not None:
+        if transaction_type == TransactionType.EXPENSE:
+            update_category_response = client.patch(f'/api/v1/categories/{category_id}', headers={"Authorization": f'Bearer {token}'}, json={'type': CategoryType.EXPENSE})
+            assert update_category_response.status_code == 200
         standard_type = transaction_type
 
-    response = client.post('/api/v1/transactions', headers={'Authorization': f'Bearer {token}'}, json={"category_id": category_id, 'amount': 100, 'transaction_type': standard_type})
 
+    if transaction_date is not None and check_date_format(transaction_date):
+        standard_date = transaction_date
+
+    if amount_index is not None:
+        standard_index = amount_index
+
+
+
+
+
+
+
+    response = client.post('/api/v1/transactions', headers={'Authorization': f'Bearer {token}'}, json={"category_id": category_id, 'amount': 100 + standard_index, 'transaction_type': standard_type, 'transaction_date': standard_date})
+
+    print(response.text)
     assert response.status_code == 201
     return response.json()['id']
 
@@ -578,6 +601,66 @@ def test_service_does_not_delete_missing_transaction(db_session):
     with pytest.raises(ValueError, match='Transaction not found.'):
         service.delete_transaction(user_id=user.id, transaction_id=999999)
 
+def test_service_filters_transactions_by_specific_parameters(db_session):
+
+    repository = TransactionRepository(db_session)
+
+    category_repository = CategoryRepository(db_session)
+    users_repository = UsersRepository(db_session)
+
+    service = TransactionService(repository=repository, category_repository=category_repository, users_repository=users_repository)
+
+    user = users_repository.create(User(email='test_user@example.com', hashed_password=hash_password('password123')))
+    income_category = category_repository.create(Category(name='income_category', type=CategoryType.INCOME, user_id=user.id))
+
+    assert income_category.type == CategoryType.INCOME
+
+    expense_category = category_repository.create(Category(name='expense_category', type=CategoryType.EXPENSE, user_id=user.id))
+
+    assert expense_category.type == CategoryType.EXPENSE
+
+    for i in range(1, 26):
+        income_transaction = service.create_transaction(user_id=user.id, category_id=income_category.id, amount=5 * i)
+        assert income_transaction is not None
+        assert income_transaction.type == TransactionType.INCOME
+
+    for i in range(1, 26):
+        expense_transaction = service.create_transaction(user_id=user.id, category_id=expense_category.id, amount=5 * i)
+        assert expense_transaction is not None
+        assert expense_transaction.type == TransactionType.EXPENSE
+
+
+    income_transactions = service.list_transactions_by_user(user_id=user.id, transaction_type=TransactionType.INCOME)
+
+    assert len(income_transactions) == 20
+
+    for i, transaction in enumerate(income_transactions):
+        service.update_transaction(user_id=user.id, transaction_id=transaction.id, transaction_date=f'{str(1999 + i)}-04-04')
+
+    income_transactions = service.list_transactions_by_user(user_id=user.id, transaction_type=TransactionType.INCOME, sort_by='transaction_date', sort_order='asc', limit=10, offset=0, date_from='2000-04-04', date_to='2011-04-04')
+
+    assert len(income_transactions) == 10
+    assert income_transactions[0].transaction_date.strftime('%Y-%m-%d') == '2000-04-04'
+    assert income_transactions[9].transaction_date.strftime('%Y-%m-%d') == '2009-04-04'
+
+    expense_transactions = service.list_transactions_by_user(user_id=user.id, transaction_type=TransactionType.EXPENSE, sort_by='amount', sort_order='desc', limit=10, offset=0, min_amount=5, max_amount=130)
+
+    assert len(expense_transactions) == 10
+    assert expense_transactions[0].amount == 125
+    assert expense_transactions[9].amount == 80
+
+    all_transactions = service.list_transactions_by_user(user_id=user.id, offset=25, limit=30)
+
+    assert len(all_transactions) == 25
+
+    all_transactions = service.list_transactions_by_user(user_id=user.id, offset=10, limit=15)
+
+    assert len(all_transactions) == 15
+
+    all_transactions = service.list_transactions_by_user(user_id=user.id, offset=10, limit=50)
+
+    assert len(all_transactions) == 40
+
 # test api
 def test_api_creates_transaction(client):
 
@@ -762,7 +845,9 @@ def test_api_lists_gets_deletes_transactions_and_deals_with_all_negative_scenari
             assert transaction.user_id == user['user_id']
 
             list_response = client.get('/api/v1/transactions', headers={"Authorization": f'Bearer {user['access_token']}'})
+
             assert list_response.status_code == 200
+            assert len(list_response.json()) > 0
             user['transactions'] = list_response.json()
 
             for transaction in user['transactions']:
@@ -829,6 +914,31 @@ def test_unauthenticated_api_request_gets_401(client):
 
     for response in all_requests:
         assert response.status_code == 401
+
+
+def test_get_transactions_with_filters(client):
+
+    token = login(client)
+
+    for i in range(1, 26):
+        create_transaction(client, token, TransactionType.INCOME, transaction_date=f'{str(1980 + i)}-04-04')
+
+    for i in range(1, 26):
+        create_transaction(client, token, TransactionType.EXPENSE, transaction_date=f'{str(2000 + i)}-04-04', amount_index=i*10)
+
+    list_income_response = client.get('/api/v1/transactions', headers={"Authorization": f'Bearer {token}'}, params={'transaction_type': TransactionType.INCOME, 'limit': 10, 'offset': 0, 'sort_by': 'transaction_date', 'sort_order': 'asc'})
+
+    assert list_income_response.status_code == 200
+    assert len(list_income_response.json()) == 10
+    assert list_income_response.json()[0]['transaction_date'] == '1981-04-04'
+
+    list_expense_response = client.get('/api/v1/transactions', headers={'Authorization': f'Bearer {token}'}, params={'transaction_type': TransactionType.EXPENSE, 'limit': 50, 'offset': 5, 'sort_by': 'amount', 'sort_order': 'desc'})
+
+    assert list_expense_response.status_code == 200
+    assert len(list_expense_response.json()) == 20
+    assert list_expense_response.json()[0]['transaction_date'] == '2020-04-04'
+
+
 
 
 
